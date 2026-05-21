@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Refinement Loop Chat</title>
+  <style>
+    :root {
+      --bg: #050b10;
+      --panel: #08131b;
+      --panel-2: #0b1c26;
+      --line: #0ff;
+      --line-dim: rgba(0, 255, 255, 0.25);
+      --text: #bffcff;
+      --text-dim: #72d7df;
+      --accent: #00f6ff;
+      --accent-2: #6affff;
+      --danger: #ff4d6d;
+      --warn: #ffd166;
+      --shadow: rgba(0, 255, 255, 0.25);
+      --user: #7df9ff;
+      --assistant: #b8ff6a;
+      --system: #ffd166;
+      --refine: #d4a0ff;
+      --refine-dim: rgba(180, 100, 255, 0.25);
+      --muted: rgba(114,215,223,0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background:
+        radial-gradient(circle at top, rgba(0,255,255,0.08), transparent 30%),
+        linear-gradient(180deg, #03070b 0%, #061018 100%);
+      color: var(--text);
+      font-family: Consolas, Monaco, 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.03) 0px,
+          rgba(255,255,255,0.03) 1px,
+          transparent 2px,
+          transparent 4px
+        );
+      mix-blend-mode: screen;
+      opacity: 0.15;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, rgba(8,19,27,0.95), rgba(4,12,18,0.95));
+      border-right: 1px solid var(--line-dim);
+      box-shadow: inset -1px 0 20px rgba(0,255,255,0.08);
+      padding: 14px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line-dim);
+      background: rgba(7, 19, 26, 0.8);
+      box-shadow: 0 0 20px rgba(0,255,255,0.06);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: var(--accent-2);
+      text-shadow: 0 0 8px var(--shadow);
+    }
+
+    .subbrand {
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+
+    .status {
+      font-size: 12px;
+      color: var(--text-dim);
+      border: 1px solid var(--line-dim);
+      padding: 6px 10px;
+      border-radius: 4px;
+      background: rgba(0,255,255,0.04);
+    }
+
+    .status.live {
+      color: var(--accent-2);
+      box-shadow: 0 0 10px rgba(0,255,255,0.12), inset 0 0 10px rgba(0,255,255,0.05);
+    }
+
+    .panel {
+      border: 1px solid var(--line-dim);
+      background: linear-gradient(180deg, rgba(9,20,29,0.75), rgba(5,13,19,0.75));
+      box-shadow:
+        0 0 18px rgba(0,255,255,0.06),
+        inset 0 0 20px rgba(0,255,255,0.03);
+      margin-bottom: 14px;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .panel h3 {
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      color: var(--accent-2);
+      border-bottom: 1px solid var(--line-dim);
+      background: rgba(0,255,255,0.04);
+    }
+
+    .panel.refine-panel h3 {
+      color: var(--refine);
+      border-bottom-color: var(--refine-dim);
+      background: rgba(180,100,255,0.05);
+    }
+
+    .panel.refine-panel {
+      border-color: var(--refine-dim);
+      box-shadow:
+        0 0 18px rgba(180,100,255,0.06),
+        inset 0 0 20px rgba(180,100,255,0.03);
+    }
+
+    .panel-body { padding: 12px; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 6px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea,
+    input[type="number"],
+    select {
+      width: 100%;
+      background: rgba(0, 12, 18, 0.85);
+      color: var(--text);
+      border: 1px solid var(--line-dim);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+      box-shadow: inset 0 0 12px rgba(0,255,255,0.03);
+    }
+
+    textarea { resize: vertical; min-height: 84px; }
+
+    input:focus, textarea:focus, select:focus, button:focus-visible {
+      border-color: var(--accent);
+      box-shadow:
+        0 0 0 1px rgba(0,255,255,0.2),
+        0 0 12px rgba(0,255,255,0.15),
+        inset 0 0 12px rgba(0,255,255,0.04);
+      outline: none;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .toggle-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      margin-bottom: 0;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--refine-dim);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .toggle-track::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 12px;
+      height: 12px;
+      background: var(--text-dim);
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    .toggle input:checked + .toggle-track {
+      background: rgba(180,100,255,0.25);
+      border-color: var(--refine);
+      box-shadow: 0 0 8px rgba(180,100,255,0.3);
+    }
+
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(20px);
+      background: var(--refine);
+    }
+
+    .toggle input:focus-visible + .toggle-track {
+      box-shadow:
+        0 0 0 1px rgba(180,100,255,0.25),
+        0 0 12px rgba(180,100,255,0.18);
+    }
+
+    .refine-settings {
+      transition: opacity 0.2s, filter 0.2s;
+    }
+
+    .refine-settings.disabled {
+      opacity: 0.4;
+      pointer-events: none;
+      filter: grayscale(0.5);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .refine-progress {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .refine-progress.active { display: block; }
+
+    .refine-progress-label {
+      font-size: 11px;
+      color: var(--refine);
+      letter-spacing: 0.1em;
+      margin-bottom: 5px;
+    }
+
+    .refine-bar-track {
+      height: 4px;
+      background: rgba(180,100,255,0.15);
+      border-radius: 2px;
+      border: 1px solid var(--refine-dim);
+      overflow: hidden;
+    }
+
+    .refine-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--refine-dim), var(--refine));
+      border-radius: 2px;
+      transition: width 0.4s ease;
+      box-shadow: 0 0 6px rgba(180,100,255,0.5);
+      width: 0%;
+    }
+
+    .chat {
+      overflow-y: auto;
+      min-height: 0;
+      padding: 18px;
+      position: relative;
+    }
+
+    .chat::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(0,255,255,0.02), rgba(0,255,255,0.01)),
+        linear-gradient(90deg, rgba(0,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(rgba(0,255,255,0.02) 1px, transparent 1px);
+      background-size: auto, 32px 32px, 32px 32px;
+      opacity: 0.12;
+    }
+
+    .messages {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .msg {
+      border: 1px solid var(--line-dim);
+      border-left: 4px solid var(--accent);
+      background: rgba(6, 18, 24, 0.8);
+      margin-bottom: 14px;
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(0,255,255,0.04);
+      overflow: hidden;
+    }
+
+    .msg.user { border-left-color: var(--user); }
+    .msg.assistant { border-left-color: var(--assistant); }
+    .msg.system { border-left-color: var(--system); }
+
+    .msg.refine {
+      border-left-color: var(--refine);
+      border-color: var(--refine-dim);
+      background: rgba(12, 6, 24, 0.85);
+      box-shadow: 0 0 12px rgba(180,100,255,0.06);
+    }
+
+    .msg.aborted {
+      opacity: 0.92;
+    }
+
+    .msg-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--line-dim);
+      background: rgba(0,255,255,0.03);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .msg.refine .msg-header {
+      background: rgba(180,100,255,0.05);
+      border-bottom-color: var(--refine-dim);
+    }
+
+    .msg.user .msg-header .role { color: var(--user); }
+    .msg.assistant .msg-header .role { color: var(--assistant); }
+    .msg.system .msg-header .role { color: var(--system); }
+    .msg.refine .msg-header .role { color: var(--refine); }
+
+    .msg-meta {
+      color: var(--text-dim);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .msg-content {
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.45;
+    }
+
+    .msg-note {
+      padding: 0 12px 12px;
+      color: var(--text-dim);
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line-dim);
+      padding: 14px;
+      background: rgba(7, 19, 26, 0.85);
+      flex-shrink: 0;
+    }
+
+    .composer-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .composer-actions-left,
+    .composer-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--line-dim);
+      background: linear-gradient(180deg, rgba(0,255,255,0.10), rgba(0,255,255,0.04));
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 4px;
+      font: inherit;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: 0.15s ease;
+      box-shadow: 0 0 10px rgba(0,255,255,0.06);
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      color: var(--accent-2);
+      box-shadow: 0 0 14px rgba(0,255,255,0.15);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-danger {
+      border-color: rgba(255, 77, 109, 0.35);
+      color: #ffd7df;
+      background: linear-gradient(180deg, rgba(255,77,109,0.12), rgba(255,77,109,0.05));
+    }
+
+    .btn-danger:hover {
+      border-color: var(--danger);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(255,77,109,0.16);
+    }
+
+    .btn-muted {
+      border-color: rgba(114, 215, 223, 0.2);
+      color: var(--text-dim);
+      background: linear-gradient(180deg, rgba(114,215,223,0.06), rgba(114,215,223,0.02));
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .btn-muted:hover {
+      border-color: var(--text-dim);
+      color: var(--text);
+      box-shadow: 0 0 8px rgba(114,215,223,0.1);
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 10px;
+      animation: blink 1s step-end infinite;
+      color: var(--accent-2);
+    }
+
+    .cursor.refine-cursor { color: var(--refine); }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .footer-line {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      opacity: 0.9;
+    }
+
+    .mono-small {
+      font-size: 12px;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+
+    .inline-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .inline-check input {
+      width: auto;
+      margin: 0;
+    }
+
+    #prompt {
+      min-height: 52px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    #refineInstruction {
+      min-height: 70px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    #refineInstruction:focus,
+    input.refine-input:focus {
+      border-color: var(--refine);
+      box-shadow:
+        0 0 0 1px rgba(180,100,255,0.2),
+        0 0 12px rgba(180,100,255,0.15),
+        inset 0 0 12px rgba(180,100,255,0.04);
+    }
+
+    .refine-var-hint {
+      font-size: 11px;
+      color: var(--refine);
+      opacity: 0.7;
+      margin-top: 5px;
+      line-height: 1.6;
+    }
+
+    .code-block {
+      margin: 10px 0;
+      border: 1px solid rgba(0,255,255,0.18);
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(0, 6, 12, 0.9);
+    }
+
+    .code-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 10px;
+      background: rgba(0,255,255,0.05);
+      border-bottom: 1px solid rgba(0,255,255,0.12);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+    }
+
+    .code-block-lang {
+      text-transform: uppercase;
+      color: var(--accent-2);
+      opacity: 0.85;
+    }
+
+    .copy-btn {
+      padding: 2px 9px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      border: 1px solid rgba(0,255,255,0.2);
+      background: rgba(0,255,255,0.06);
+      color: var(--text-dim);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: 0.15s;
+      text-transform: uppercase;
+      font-family: inherit;
+      line-height: 1.8;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent-2);
+      box-shadow: 0 0 8px rgba(0,255,255,0.15);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--assistant);
+      color: var(--assistant);
+      box-shadow: 0 0 8px rgba(184,255,106,0.2);
+    }
+
+    .code-block pre {
+      margin: 0;
+      padding: 12px 14px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0,255,255,0.2) transparent;
+    }
+
+    .code-block pre::-webkit-scrollbar { height: 4px; }
+    .code-block pre::-webkit-scrollbar-thumb { background: rgba(0,255,255,0.2); border-radius: 2px; }
+    .code-block pre::-webkit-scrollbar-track { background: transparent; }
+
+    .code-block code {
+      font-family: Consolas, Monaco, 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--accent-2);
+      white-space: pre;
+      line-height: 1.55;
+    }
+
+    .msg-content code {
+      background: rgba(0,255,255,0.08);
+      border: 1px solid rgba(0,255,255,0.15);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--accent-2);
+      font-size: 0.92em;
+    }
+
+    .code-block pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 13px;
+    }
+
+    .msg-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .md-h1 {
+      display: block;
+      font-size: 1.25em;
+      font-weight: 700;
+      color: var(--accent-2);
+      letter-spacing: 0.05em;
+      margin: 0.3em 0 0.1em;
+    }
+
+    .md-h2 {
+      display: block;
+      font-size: 1.1em;
+      font-weight: 700;
+      color: var(--accent-2);
+      letter-spacing: 0.04em;
+      margin: 0.25em 0 0.05em;
+    }
+
+    .md-h3 {
+      display: block;
+      font-size: 1em;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.03em;
+      margin: 0.2em 0 0.05em;
+    }
+
+    .msg-content strong { color: var(--accent-2); font-weight: 700; }
+    .msg-content em { color: var(--text-dim); font-style: italic; }
+
+    .hidden-file-input {
+      display: none;
+    }
+
+    @media (max-width: 920px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .sidebar {
+        max-height: 38vh;
+        border-right: none;
+        border-bottom: 1px solid var(--line-dim);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="panel">
+        <h3>Connection</h3>
+        <div class="panel-body">
+          <label for="endpointPreset">Endpoint Preset</label>
+          <select id="endpointPreset">
+            <option value="custom">Custom</option>
+            <option value="lmstudio">LM Studio</option>
+            <option value="ollama-proxy">Ollama / OpenAI Proxy</option>
+            <option value="openai">OpenAI</option>
+          </select>
+
+          <div style="height:10px"></div>
+
+          <label for="endpoint">Endpoint</label>
+          <input id="endpoint" type="text" value="http://172.28.51.45:1234/v1/chat/completions" />
+
+          <div style="height:10px"></div>
+
+          <label for="model">Model</label>
+          <input id="model" type="text" value="gemma-4-26b-a4b-it" />
+
+          <div style="height:10px"></div>
+
+          <label for="apiKey">API Key (optional)</label>
+          <input id="apiKey" type="password" placeholder="Leave blank if not needed" />
+
+          <label class="inline-check">
+            <input id="rememberApiKey" type="checkbox" />
+            Remember API key for this browser session only
+          </label>
+
+          <div class="footer-line">OpenAI-compatible chat completions + streaming</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Session Config</h3>
+        <div class="panel-body">
+          <label for="systemPrompt">System Prompt</label>
+          <textarea id="systemPrompt">You are a helpful AI assistant responding in a concise but useful way.</textarea>
+
+          <div style="height:10px"></div>
+
+          <div class="grid-2">
+            <div>
+              <label for="temperature">Temperature</label>
+              <input id="temperature" type="number" value="0.7" min="0" max="2" step="0.1" />
+            </div>
+            <div>
+              <label for="maxTokens">Max Tokens</label>
+              <input id="maxTokens" type="number" value="1024" min="1" step="1" />
+            </div>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <label for="extraParams">Extra JSON Params (optional)</label>
+          <textarea id="extraParams" placeholder='{"top_p": 0.9}'></textarea>
+        </div>
+      </div>
+
+      <div class="panel refine-panel">
+        <h3>⟳ Refinement Loop</h3>
+        <div class="panel-body">
+          <div class="toggle-row">
+            <label class="toggle-label" for="refineEnabled">Enable Refinement Loop</label>
+            <label class="toggle">
+              <input type="checkbox" id="refineEnabled" aria-label="Enable refinement loop" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <label class="toggle-label" for="showRefineDetails">Show Refinement Details In Chat</label>
+            <label class="toggle">
+              <input type="checkbox" id="showRefineDetails" checked aria-label="Show refinement details in chat" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="refine-settings disabled" id="refineSettings">
+            <div class="grid-2" style="margin-bottom:12px">
+              <div>
+                <label for="refineIterations">Iterations</label>
+                <input id="refineIterations" class="refine-input" type="number" value="2" min="1" max="5" step="1" />
+              </div>
+              <div>
+                <label for="refineTemp">Temperature</label>
+                <input id="refineTemp" class="refine-input" type="number" value="0.5" min="0" max="2" step="0.1" />
+              </div>
+            </div>
+
+            <label for="refineInstruction">Refinement Instruction</label>
+            <textarea id="refineInstruction" class="refine-input">Original request: {{PROMPT}}
+
+Previous response:
+{{RESPONSE}}
+
+Please critically review the above response and produce an improved version. Fix any inaccuracies, improve clarity, fill in gaps, and make it more complete and useful. Output only the refined response with no preamble.</textarea>
+
+            <div class="refine-var-hint">
+              Variables: <strong>{{PROMPT}}</strong> · <strong>{{RESPONSE}}</strong>
+            </div>
+
+            <div class="refine-progress" id="refineProgress">
+              <div class="refine-progress-label" id="refineProgressLabel">REFINING 0 / 0</div>
+              <div class="refine-bar-track">
+                <div class="refine-bar-fill" id="refineBarFill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Session</h3>
+        <div class="panel-body">
+          <div class="composer-actions-right" style="justify-content:flex-start;">
+            <button id="saveBtn" class="btn-muted" type="button">Export</button>
+            <button id="importBtn" class="btn-muted" type="button">Import</button>
+            <input id="importFile" class="hidden-file-input" type="file" accept="application/json" />
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="titlebar">
+        <div>
+          <div class="brand">REFINEMENT LOOP CHAT</div>
+          <div class="subbrand">STREAMING LLM TERMINAL INTERFACE</div>
+        </div>
+        <div class="status" id="status" aria-live="polite">IDLE</div>
+      </div>
+
+      <section class="chat" id="chat">
+        <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+      </section>
+
+      <section class="composer">
+        <div class="composer-inner">
+          <label for="prompt">Input</label>
+          <textarea id="prompt" placeholder="Type your message… Enter to send, Shift+Enter for newline"></textarea>
+
+          <div class="composer-actions">
+            <div class="composer-actions-left">
+              <button id="sendBtn" type="button">Send</button>
+              <button id="retryBtn" class="btn-muted" type="button">Retry</button>
+              <button id="stopBtn" class="btn-danger" type="button" disabled>Abort</button>
+              <span class="hint">Enter = send · Shift+Enter = newline</span>
+            </div>
+            <div class="composer-actions-right">
+              <button id="clearBtn" class="btn-muted" type="button">Clear Chat</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const endpointPresetEl   = document.getElementById('endpointPreset');
+    const endpointEl         = document.getElementById('endpoint');
+    const modelEl            = document.getElementById('model');
+    const apiKeyEl           = document.getElementById('apiKey');
+    const rememberApiKeyEl   = document.getElementById('rememberApiKey');
+    const systemPromptEl     = document.getElementById('systemPrompt');
+    const temperatureEl      = document.getElementById('temperature');
+    const maxTokensEl        = document.getElementById('maxTokens');
+    const extraParamsEl      = document.getElementById('extraParams');
+
+    const refineEnabledEl    = document.getElementById('refineEnabled');
+    const showRefineDetailsEl = document.getElementById('showRefineDetails');
+    const refineSettingsEl   = document.getElementById('refineSettings');
+    const refineIterEl       = document.getElementById('refineIterations');
+    const refineTempEl       = document.getElementById('refineTemp');
+    const refineInstrEl      = document.getElementById('refineInstruction');
+    const refineProgressEl   = document.getElementById('refineProgress');
+    const refineProgressLbl  = document.getElementById('refineProgressLabel');
+    const refineBarFill      = document.getElementById('refineBarFill');
+
+    const promptEl           = document.getElementById('prompt');
+    const sendBtn            = document.getElementById('sendBtn');
+    const retryBtn           = document.getElementById('retryBtn');
+    const stopBtn            = document.getElementById('stopBtn');
+    const clearBtn           = document.getElementById('clearBtn');
+    const saveBtn            = document.getElementById('saveBtn');
+    const importBtn          = document.getElementById('importBtn');
+    const importFileEl       = document.getElementById('importFile');
+
+    const messagesEl         = document.getElementById('messages');
+    const chatEl             = document.getElementById('chat');
+    const statusEl           = document.getElementById('status');
+
+    const SETTINGS_KEY       = 'mainframe-chat-settings-v2';
+    const APIKEY_SESSION_KEY = 'mainframe-chat-api-key';
+    const transcript = [];
+    const conversation = [];
+
+    let abortController = null;
+    let isStreaming = false;
+    let lastUserMessage = '';
+
+    const endpointPresets = {
+      custom: '',
+      lmstudio: 'http://127.0.0.1:1234/v1/chat/completions',
+      'ollama-proxy': 'http://127.0.0.1:11434/v1/chat/completions',
+      openai: 'https://api.openai.com/v1/chat/completions'
+    };
+
+    function setStatus(text, live = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('live', live);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function getNumber(el, fallback, min = -Infinity, max = Infinity) {
+      const n = Number(el.value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function parseExtraParams() {
+      const raw = extraParamsEl.value.trim();
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Extra params must be a JSON object.');
+        }
+        return parsed;
+      } catch (e) {
+        throw new Error(`Invalid Extra JSON Params: ${e.message}`);
+      }
+    }
+
+    function saveSettings() {
+      const settings = {
+        endpointPreset: endpointPresetEl.value,
+        endpoint: endpointEl.value,
+        model: modelEl.value,
+        systemPrompt: systemPromptEl.value,
+        temperature: temperatureEl.value,
+        maxTokens: maxTokensEl.value,
+        extraParams: extraParamsEl.value,
+        refineEnabled: refineEnabledEl.checked,
+        showRefineDetails: showRefineDetailsEl.checked,
+        refineIter: refineIterEl.value,
+        refineTemp: refineTempEl.value,
+        refineInstr: refineInstrEl.value,
+        rememberApiKey: rememberApiKeyEl.checked
+      };
+
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      } catch (e) {
+        console.warn('Could not save settings:', e);
+      }
+
+      try {
+        if (rememberApiKeyEl.checked && apiKeyEl.value.trim()) {
+          sessionStorage.setItem(APIKEY_SESSION_KEY, apiKeyEl.value);
+        } else {
+          sessionStorage.removeItem(APIKEY_SESSION_KEY);
+        }
+      } catch (e) {
+        console.warn('Could not save session API key:', e);
+      }
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (raw) {
+          const settings = JSON.parse(raw);
+          if (settings.endpointPreset !== undefined) endpointPresetEl.value = settings.endpointPreset;
+          if (settings.endpoint !== undefined) endpointEl.value = settings.endpoint;
+          if (settings.model !== undefined) modelEl.value = settings.model;
+          if (settings.systemPrompt !== undefined) systemPromptEl.value = settings.systemPrompt;
+          if (settings.temperature !== undefined) temperatureEl.value = settings.temperature;
+          if (settings.maxTokens !== undefined) maxTokensEl.value = settings.maxTokens;
+          if (settings.extraParams !== undefined) extraParamsEl.value = settings.extraParams;
+          if (settings.refineEnabled !== undefined) refineEnabledEl.checked = settings.refineEnabled;
+          if (settings.showRefineDetails !== undefined) showRefineDetailsEl.checked = settings.showRefineDetails;
+          if (settings.refineIter !== undefined) refineIterEl.value = settings.refineIter;
+          if (settings.refineTemp !== undefined) refineTempEl.value = settings.refineTemp;
+          if (settings.refineInstr !== undefined) refineInstrEl.value = settings.refineInstr;
+          if (settings.rememberApiKey !== undefined) rememberApiKeyEl.checked = settings.rememberApiKey;
+        }
+      } catch (e) {
+        console.warn('Could not load settings:', e);
+      }
+
+      try {
+        const savedKey = sessionStorage.getItem(APIKEY_SESSION_KEY);
+        if (savedKey) apiKeyEl.value = savedKey;
+      } catch (e) {
+        console.warn('Could not load session API key:', e);
+      }
+
+      refineSettingsEl.classList.toggle('disabled', !refineEnabledEl.checked);
+    }
+
+    function formatTimestamp(date = new Date()) {
+      return date.toLocaleTimeString();
+    }
+
+    function applyInlineStyles(esc) {
+      return esc
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    }
+
+    function renderInline(text) {
+      return text.split('\n').map(line => {
+        const esc = escapeHtml(line);
+        const headingMatch = esc.match(/^(#{1,3})\s(.+)$/);
+        if (headingMatch) {
+          const level = headingMatch[1].length;
+          return `<span class="md-h${level}">${applyInlineStyles(headingMatch[2])}</span>`;
+        }
+        return applyInlineStyles(esc);
+      }).join('<br>');
+    }
+
+    // Live display during streaming — keeps cursor visible and previews open code fences
+    function renderStreaming(contentEl, text, cursorClass) {
+      const fenceCount = (text.match(/```/g) || []).length;
+
+      if (fenceCount % 2 === 0) {
+        // No unclosed fence — plain text with cursor appended
+        contentEl.innerHTML =
+          escapeHtml(text).replace(/\n/g, '<br>') +
+          `<span class="cursor${cursorClass}">█</span>`;
+      } else {
+        // Unclosed fence — render text before it normally, show open fence as a live <pre>
+        const lastFenceIdx = text.lastIndexOf('```');
+        const before = text.slice(0, lastFenceIdx);
+        const fenceRaw = text.slice(lastFenceIdx + 3);
+        const nlIdx = fenceRaw.indexOf('\n');
+        const lang = nlIdx >= 0 ? fenceRaw.slice(0, nlIdx).trim() : fenceRaw.trim();
+        const code = nlIdx >= 0 ? fenceRaw.slice(nlIdx + 1) : '';
+
+        contentEl.innerHTML =
+          escapeHtml(before).replace(/\n/g, '<br>') +
+          `<div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">${escapeHtml(lang) || 'code'}</span>
+              <span style="font-size:10px;color:var(--text-dim);opacity:0.6;letter-spacing:0.08em">STREAMING</span>
+            </div>
+            <pre><code>${escapeHtml(code)}<span class="cursor${cursorClass}">█</span></code></pre>
+          </div>`;
+      }
+    }
+
+    function parseMarkdown(text) {
+      const codeBlockRe = /```([^\n]*)\n([\s\S]*?)```/g;
+      let result = '';
+      let lastIndex = 0;
+      let match;
+
+      while ((match = codeBlockRe.exec(text)) !== null) {
+        result += renderInline(text.slice(lastIndex, match.index));
+        const lang = match[1].trim();
+        const code = match[2].replace(/\n$/, '');
+        result += `<div class="code-block">
+          <div class="code-block-header">
+            <span class="code-block-lang">${escapeHtml(lang) || 'code'}</span>
+            <button class="copy-btn" type="button" aria-label="Copy code block">COPY</button>
+          </div>
+          <pre><code>${escapeHtml(code)}</code></pre>
+        </div>`;
+        lastIndex = match.index + match[0].length;
+      }
+
+      result += renderInline(text.slice(lastIndex));
+      return result;
+    }
+
+    function renderContent(el, text) {
+      el.innerHTML = parseMarkdown(text || '[no response]');
+    }
+
+    function createMessageElement(role, content, label = null, meta = '') {
+      const wrapper = document.createElement('div');
+      wrapper.className = `msg ${role}`;
+
+      const header = document.createElement('div');
+      header.className = 'msg-header';
+
+      const roleSpan = document.createElement('div');
+      roleSpan.className = 'role';
+      roleSpan.textContent = label ?? role;
+
+      const rightWrapper = document.createElement('div');
+      rightWrapper.className = 'msg-header-right';
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'msg-meta';
+      metaEl.textContent = meta ? `${formatTimestamp()} · ${meta}` : formatTimestamp();
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'copy-btn msg-copy-btn';
+      copyBtn.type = 'button';
+      copyBtn.setAttribute('aria-label', 'Copy message');
+      copyBtn.textContent = 'COPY';
+
+      rightWrapper.appendChild(metaEl);
+      rightWrapper.appendChild(copyBtn);
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'msg-content';
+      contentDiv.textContent = content;
+
+      const noteDiv = document.createElement('div');
+      noteDiv.className = 'msg-note';
+      noteDiv.hidden = true;
+
+      header.appendChild(roleSpan);
+      header.appendChild(rightWrapper);
+      wrapper.appendChild(header);
+      wrapper.appendChild(contentDiv);
+      wrapper.appendChild(noteDiv);
+
+      return { wrapper, contentDiv, noteDiv, metaEl };
+    }
+
+    function appendMessage(role, content, label = null, meta = '') {
+      const msg = createMessageElement(role, content, label, meta);
+      messagesEl.appendChild(msg.wrapper);
+      transcript.push({ role, content, label, meta, timestamp: new Date().toISOString() });
+      scrollToBottomThrottled();
+      return msg;
+    }
+
+    let scrollPending = false;
+    function scrollToBottomThrottled(force = false) {
+      if (force) {
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return;
+      }
+      if (scrollPending) return;
+      scrollPending = true;
+      requestAnimationFrame(() => {
+        chatEl.scrollTop = chatEl.scrollHeight;
+        scrollPending = false;
+      });
+    }
+
+    function autoResizeTextarea(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+    }
+
+    function setControls(streaming) {
+      isStreaming = streaming;
+      sendBtn.disabled = streaming;
+      retryBtn.disabled = streaming || !lastUserMessage;
+      stopBtn.disabled = !streaming;
+      clearBtn.disabled = streaming;
+      saveBtn.disabled = streaming;
+      importBtn.disabled = streaming;
+      promptEl.disabled = streaming;
+      setStatus(streaming ? 'STREAMING' : 'IDLE', streaming);
+    }
+
+    function addBootMessage() {
+      const boot = createMessageElement(
+        'system',
+        'MAINFRAME LINK INITIALIZED\nOPENAI-COMPATIBLE STREAM MODE READY'
+      );
+      messagesEl.appendChild(boot.wrapper);
+    }
+
+    function getConversationPayload(extraMessages = []) {
+      const messages = [];
+      const systemPrompt = systemPromptEl.value.trim();
+      if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+      for (const msg of conversation) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+      for (const msg of extraMessages) {
+        messages.push(msg);
+      }
+      return messages;
+    }
+
+    function buildRefinePrompt(originalPrompt, previousResponse) {
+      return refineInstrEl.value
+        .replaceAll('{{PROMPT}}', originalPrompt)
+        .replaceAll('{{RESPONSE}}', previousResponse);
+    }
+
+    function updateRefineProgress(current, total) {
+      if (total === 0) {
+        refineProgressEl.classList.remove('active');
+        refineBarFill.style.width = '0%';
+        return;
+      }
+      refineProgressEl.classList.add('active');
+      refineProgressLbl.textContent = `REFINING ${current} / ${total}`;
+      refineBarFill.style.width = `${(current / total) * 100}%`;
+    }
+
+    async function readError(response) {
+      const text = await response.text();
+      try {
+        const json = JSON.parse(text);
+        return json.error?.message || json.message || text;
+      } catch {
+        return text;
+      }
+    }
+
+    async function streamRequest({ messages, temperature, contentEl, cursorClass = '' }) {
+      const requestStart = performance.now();
+      const extraParams = parseExtraParams();
+      const body = {
+        model: modelEl.value.trim() || 'gemma-4-26b-a4b-it',
+        messages,
+        temperature,
+        max_tokens: getNumber(maxTokensEl, 1024, 1, 100000),
+        stream: true,
+        ...extraParams
+      };
+
+      const headers = { 'Content-Type': 'application/json' };
+      const apiKey = apiKeyEl.value.trim();
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      contentEl.innerHTML = `<span class="cursor${cursorClass}">█</span>`;
+
+      const response = await fetch(endpointEl.value.trim(), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: abortController.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await readError(response)}`);
+      }
+      if (!response.body) {
+        throw new Error('No response body / ReadableStream unsupported.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let text = '';
+      let usage = null;
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          const events = buffer.split(/\r?\n\r?\n/);
+          buffer = events.pop() || '';
+
+          for (const evt of events) {
+            const dataLines = evt
+              .split(/\r?\n/)
+              .filter(line => line.startsWith('data:'))
+              .map(line => line.slice(5).trim());
+
+            if (!dataLines.length) continue;
+            const data = dataLines.join('\n');
+
+            if (data === '[DONE]') {
+              const durationMs = Math.round(performance.now() - requestStart);
+              renderContent(contentEl, text || '[no response]');
+              return { text: text || '[no response]', aborted: false, usage, durationMs };
+            }
+
+            try {
+              const json = JSON.parse(data);
+              if (json.usage) usage = json.usage;
+              const choice = json.choices?.[0];
+              const delta = choice?.delta?.content ?? choice?.message?.content ?? '';
+              if (delta) {
+                text += delta;
+                renderStreaming(contentEl, text, cursorClass);
+                scrollToBottomThrottled();
+              }
+            } catch (e) {
+              console.warn('Failed to parse SSE event:', data, e);
+            }
+          }
+        }
+
+        const durationMs = Math.round(performance.now() - requestStart);
+        renderContent(contentEl, text || '[no response]');
+        return { text: text || '[no response]', aborted: false, usage, durationMs };
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          const durationMs = Math.round(performance.now() - requestStart);
+          renderContent(contentEl, text || '[aborted]');
+          return { text: text || '[aborted]', aborted: true, usage, durationMs };
+        }
+        throw err;
+      }
+    }
+
+    async function sendMessage(customUserText = null, isRetry = false) {
+      const userText = (customUserText ?? promptEl.value).trim();
+      if (!userText || isStreaming) return;
+
+      if (!isRetry) {
+        appendMessage('user', userText);
+        conversation.push({ role: 'user', content: userText });
+      } else {
+        appendMessage('system', '[retrying last prompt]');
+        if (conversation.length && conversation[conversation.length - 1].role === 'assistant') {
+          conversation.pop();
+          // Remove the stale assistant DOM element left from the previous attempt
+          const assistantMsgs = messagesEl.querySelectorAll('.msg.assistant');
+          if (assistantMsgs.length) assistantMsgs[assistantMsgs.length - 1].remove();
+        }
+      }
+
+      lastUserMessage = userText;
+      promptEl.value = '';
+      autoResizeTextarea(promptEl);
+
+      abortController = new AbortController();
+      setControls(true);
+      updateRefineProgress(0, 0);
+
+      let finalResponse = '';
+      let currentMessage = null;
+      const startTime = performance.now();
+
+      try {
+        currentMessage = appendMessage('assistant', '');
+        let initial = await streamRequest({
+          messages: getConversationPayload(),
+          temperature: getNumber(temperatureEl, 0.7, 0, 2),
+          contentEl: currentMessage.contentDiv
+        });
+
+        finalResponse = initial.text;
+
+        if (initial.aborted) {
+          currentMessage.wrapper.classList.add('aborted');
+          currentMessage.noteDiv.hidden = false;
+          currentMessage.noteDiv.textContent = '[stream aborted]';
+          conversation.push({ role: 'assistant', content: finalResponse + '\n\n[aborted]' });
+          return;
+        }
+
+        // Update initial message meta with per-request timing and token counts
+        {
+          const usageParts = initial.usage
+            ? ` · ${initial.usage.prompt_tokens ?? '?'}↑ ${initial.usage.completion_tokens ?? '?'}↓`
+            : '';
+          currentMessage.metaEl.textContent = `${formatTimestamp()} · ${initial.durationMs} ms${usageParts}`;
+        }
+
+        const doRefine = refineEnabledEl.checked;
+        const iterations = doRefine ? getNumber(refineIterEl, 2, 1, 5) : 0;
+        const showRefine = showRefineDetailsEl.checked;
+
+        for (let i = 1; i <= iterations; i++) {
+          if (abortController.signal.aborted) break;
+
+          updateRefineProgress(i, iterations);
+          setStatus(`REFINING ${i}/${iterations}`, true);
+
+          const refinePrompt = buildRefinePrompt(userText, finalResponse);
+          const label = `refine ${i}/${iterations}`;
+
+          if (showRefine) {
+            appendMessage('refine', refinePrompt, `${label} · input`);
+          } else {
+            appendMessage('system', `[refinement ${i}/${iterations} in progress]`);
+          }
+
+          const refineRespMsg = showRefine
+            ? appendMessage('refine', '', `${label} · output`)
+            : appendMessage('system', '', `${label}`);
+
+          const refineMessages = [
+            ...(systemPromptEl.value.trim() ? [{ role: 'system', content: systemPromptEl.value.trim() }] : []),
+            { role: 'user', content: userText },
+            { role: 'assistant', content: finalResponse },
+            { role: 'user', content: refinePrompt }
+          ];
+
+          const refined = await streamRequest({
+            messages: refineMessages,
+            temperature: getNumber(refineTempEl, 0.5, 0, 2),
+            contentEl: refineRespMsg.contentDiv,
+            cursorClass: ' refine-cursor'
+          });
+
+          finalResponse = refined.text;
+
+          // Update refine message meta with per-request timing and token counts
+          {
+            const usageParts = refined.usage
+              ? ` · ${refined.usage.prompt_tokens ?? '?'}↑ ${refined.usage.completion_tokens ?? '?'}↓`
+              : '';
+            refineRespMsg.metaEl.textContent = `${formatTimestamp()} · ${refined.durationMs} ms${usageParts}`;
+          }
+
+          if (refined.aborted) {
+            refineRespMsg.wrapper.classList.add('aborted');
+            refineRespMsg.noteDiv.hidden = false;
+            refineRespMsg.noteDiv.textContent = '[refinement aborted]';
+            conversation.push({ role: 'assistant', content: finalResponse + '\n\n[aborted]' });
+            return;
+          }
+        }
+
+        conversation.push({ role: 'assistant', content: finalResponse });
+
+      } catch (err) {
+        appendMessage('system', `[error] ${err.message}`);
+      } finally {
+        updateRefineProgress(0, 0);
+        abortController = null;
+        setControls(false);
+        promptEl.focus();
+      }
+    }
+
+    function clearChat() {
+      if (isStreaming) return;
+      const hasContent = conversation.length || messagesEl.children.length > 1;
+      if (hasContent && !confirm('Clear current chat?')) return;
+
+      conversation.length = 0;
+      transcript.length = 0;
+      messagesEl.innerHTML = '';
+      updateRefineProgress(0, 0);
+      setStatus('IDLE', false);
+      addBootMessage();
+      lastUserMessage = '';
+      setControls(false);
+    }
+
+    function exportChat() {
+      const payload = {
+        exported_at: new Date().toISOString(),
+        endpoint_preset: endpointPresetEl.value,
+        endpoint: endpointEl.value.trim(),
+        model: modelEl.value.trim(),
+        system_prompt: systemPromptEl.value,
+        temperature: getNumber(temperatureEl, 0.7, 0, 2),
+        max_tokens: getNumber(maxTokensEl, 1024, 1, 100000),
+        extra_params: extraParamsEl.value,
+        refinement: {
+          enabled: refineEnabledEl.checked,
+          show_details: showRefineDetailsEl.checked,
+          iterations: getNumber(refineIterEl, 2, 1, 5),
+          temperature: getNumber(refineTempEl, 0.5, 0, 2),
+          instruction: refineInstrEl.value
+        },
+        conversation,
+        transcript
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mainframe-chat-export.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importChat(file) {
+      const text = await file.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Invalid JSON file.');
+      }
+
+      conversation.length = 0;
+      transcript.length = 0;
+      messagesEl.innerHTML = '';
+
+      if (typeof data.endpoint === 'string') endpointEl.value = data.endpoint;
+      if (typeof data.endpoint_preset === 'string') endpointPresetEl.value = data.endpoint_preset;
+      if (typeof data.model === 'string') modelEl.value = data.model;
+      if (typeof data.system_prompt === 'string') systemPromptEl.value = data.system_prompt;
+      if (data.temperature !== undefined) temperatureEl.value = data.temperature;
+      if (data.max_tokens !== undefined) maxTokensEl.value = data.max_tokens;
+      if (typeof data.extra_params === 'string') extraParamsEl.value = data.extra_params;
+
+      if (data.refinement && typeof data.refinement === 'object') {
+        refineEnabledEl.checked = !!data.refinement.enabled;
+        showRefineDetailsEl.checked = data.refinement.show_details !== false;
+        if (data.refinement.iterations !== undefined) refineIterEl.value = data.refinement.iterations;
+        if (data.refinement.temperature !== undefined) refineTempEl.value = data.refinement.temperature;
+        if (typeof data.refinement.instruction === 'string') refineInstrEl.value = data.refinement.instruction;
+      }
+
+      refineSettingsEl.classList.toggle('disabled', !refineEnabledEl.checked);
+
+      if (Array.isArray(data.conversation)) {
+        for (const msg of data.conversation) {
+          if (msg && typeof msg.role === 'string' && typeof msg.content === 'string') {
+            conversation.push({ role: msg.role, content: msg.content });
+          }
+        }
+      }
+
+      addBootMessage();
+
+      if (Array.isArray(data.transcript) && data.transcript.length) {
+        for (const item of data.transcript) {
+          if (!item || typeof item.role !== 'string') continue;
+          const msg = createMessageElement(item.role, item.content || '', item.label || null, item.meta || '');
+          if (msg.contentDiv) renderContent(msg.contentDiv, item.content || '');
+          messagesEl.appendChild(msg.wrapper);
+          transcript.push(item);
+        }
+      } else {
+        for (const item of conversation) {
+          const msg = createMessageElement(item.role, item.content || '');
+          if (msg.contentDiv) renderContent(msg.contentDiv, item.content || '');
+          messagesEl.appendChild(msg.wrapper);
+          transcript.push({
+            role: item.role,
+            content: item.content,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      lastUserMessage = [...conversation].reverse().find(m => m.role === 'user')?.content || '';
+      saveSettings();
+      scrollToBottomThrottled(true);
+    }
+
+    function applyEndpointPreset() {
+      const preset = endpointPresetEl.value;
+      if (preset !== 'custom' && endpointPresets[preset]) {
+        endpointEl.value = endpointPresets[preset];
+      }
+      saveSettings();
+    }
+
+    const settingEls = [
+      endpointPresetEl, endpointEl, modelEl, apiKeyEl, rememberApiKeyEl,
+      systemPromptEl, temperatureEl, maxTokensEl, extraParamsEl,
+      refineEnabledEl, showRefineDetailsEl, refineIterEl, refineTempEl, refineInstrEl
+    ];
+
+    settingEls.forEach(el => {
+      el.addEventListener('input', saveSettings);
+      el.addEventListener('change', saveSettings);
+    });
+
+    refineEnabledEl.addEventListener('change', () => {
+      refineSettingsEl.classList.toggle('disabled', !refineEnabledEl.checked);
+    });
+
+    endpointPresetEl.addEventListener('change', applyEndpointPreset);
+
+    sendBtn.addEventListener('click', () => sendMessage());
+    retryBtn.addEventListener('click', () => {
+      if (lastUserMessage) sendMessage(lastUserMessage, true);
+    });
+    stopBtn.addEventListener('click', () => {
+      if (abortController) abortController.abort();
+    });
+    clearBtn.addEventListener('click', clearChat);
+    saveBtn.addEventListener('click', exportChat);
+
+    importBtn.addEventListener('click', () => importFileEl.click());
+    importFileEl.addEventListener('change', async () => {
+      const file = importFileEl.files?.[0];
+      if (!file) return;
+      try {
+        await importChat(file);
+      } catch (e) {
+        appendMessage('system', `[import error] ${e.message}`);
+      } finally {
+        importFileEl.value = '';
+      }
+    });
+
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    promptEl.addEventListener('input', () => autoResizeTextarea(promptEl));
+
+    messagesEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+
+      let textToCopy;
+      if (btn.classList.contains('msg-copy-btn')) {
+        // Copy full message text content
+        textToCopy = btn.closest('.msg')?.querySelector('.msg-content')?.textContent ?? '';
+      } else {
+        // Copy code block content
+        textToCopy = btn.closest('.code-block')?.querySelector('code')?.textContent ?? '';
+      }
+
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        btn.textContent = 'COPIED!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'COPY';
+          btn.classList.remove('copied');
+        }, 1600);
+      } catch {
+        btn.textContent = 'FAILED';
+        setTimeout(() => {
+          btn.textContent = 'COPY';
+        }, 1600);
+      }
+    });
+
+    loadSettings();
+    autoResizeTextarea(promptEl);
+    setStatus('IDLE', false);
+    setControls(false);
+    addBootMessage();
+    promptEl.focus();
+  </script>
+</body>
+</html>
