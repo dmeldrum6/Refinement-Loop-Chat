@@ -4,6 +4,8 @@ A single-file, self-contained chat client for any OpenAI-compatible LLM API. Dro
 
 ![Static Badge](https://img.shields.io/badge/single--file-HTML-cyan) ![Static Badge](https://img.shields.io/badge/no_dependencies-black)
 
+<img width="1915" height="903" alt="image" src="https://github.com/user-attachments/assets/a02ed0fb-d342-4db5-8d53-c0347cbadef6" />
+
 ---
 
 ## Features
