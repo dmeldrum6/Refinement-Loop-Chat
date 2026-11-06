@@ -894,6 +894,8 @@ Please critically review the above response and produce an improved version. Fix
     const APIKEY_SESSION_KEY = 'mainframe-chat-api-key';
     const transcript = [];
     const conversation = [];
+    // Maps each transcript entry to its rendered message wrapper (used by Retry)
+    const entryElements = new WeakMap();
 
     let abortController = null;
     let isStreaming = false;
@@ -1118,6 +1120,8 @@ Please critically review the above response and produce an improved version. Fix
       const contentDiv = document.createElement('div');
       contentDiv.className = 'msg-content';
       contentDiv.textContent = content;
+      // Keep the unrendered text so COPY returns the original markdown
+      wrapper.rawText = content;
 
       const noteDiv = document.createElement('div');
       noteDiv.className = 'msg-note';
@@ -1135,9 +1139,42 @@ Please critically review the above response and produce an improved version. Fix
     function appendMessage(role, content, label = null, meta = '') {
       const msg = createMessageElement(role, content, label, meta);
       messagesEl.appendChild(msg.wrapper);
-      transcript.push({ role, content, label, meta, timestamp: new Date().toISOString() });
+      const entry = { role, content, label, meta, timestamp: new Date().toISOString() };
+      transcript.push(entry);
+      entryElements.set(entry, msg.wrapper);
+      msg.entry = entry;
       scrollToBottomThrottled();
       return msg;
+    }
+
+    function formatStats(result) {
+      const usageParts = result.usage
+        ? ` · ${result.usage.prompt_tokens ?? '?'}↑ ${result.usage.completion_tokens ?? '?'}↓`
+        : '';
+      return `${result.durationMs} ms${usageParts}`;
+    }
+
+    // Record a finished stream's text and stats on the message, its DOM and its transcript entry
+    function finalizeMessage(msg, result) {
+      const meta = formatStats(result);
+      msg.metaEl.textContent = `${formatTimestamp()} · ${meta}`;
+      msg.wrapper.rawText = result.text;
+      if (msg.entry) {
+        msg.entry.content = result.text;
+        msg.entry.meta = meta;
+      }
+    }
+
+    // Remove every transcript entry (and its DOM element) after the last user message
+    function removeMessagesAfterLastUser() {
+      let lastUserIdx = -1;
+      for (let i = transcript.length - 1; i >= 0; i--) {
+        if (transcript[i].role === 'user') { lastUserIdx = i; break; }
+      }
+      if (lastUserIdx < 0) return;
+      for (const entry of transcript.splice(lastUserIdx + 1)) {
+        entryElements.get(entry)?.remove();
+      }
     }
 
     let scrollPending = false;
@@ -1228,8 +1265,13 @@ Please critically review the above response and produce an improved version. Fix
         temperature,
         max_tokens: getNumber(maxTokensEl, 1024, 1, 100000),
         stream: true,
+        stream_options: { include_usage: true },
         ...extraParams
       };
+      // A null value in Extra JSON Params removes that field from the request
+      for (const [key, value] of Object.entries(body)) {
+        if (value === null) delete body[key];
+      }
 
       const headers = { 'Content-Type': 'application/json' };
       const apiKey = apiKeyEl.value.trim();
@@ -1279,7 +1321,7 @@ Please critically review the above response and produce an improved version. Fix
             if (data === '[DONE]') {
               const durationMs = Math.round(performance.now() - requestStart);
               renderContent(contentEl, text || '[no response]');
-              return { text: text || '[no response]', aborted: false, usage, durationMs };
+              return { text: text || '[no response]', empty: !text, aborted: false, usage, durationMs };
             }
 
             try {
@@ -1300,12 +1342,12 @@ Please critically review the above response and produce an improved version. Fix
 
         const durationMs = Math.round(performance.now() - requestStart);
         renderContent(contentEl, text || '[no response]');
-        return { text: text || '[no response]', aborted: false, usage, durationMs };
+        return { text: text || '[no response]', empty: !text, aborted: false, usage, durationMs };
       } catch (err) {
         if (err.name === 'AbortError') {
           const durationMs = Math.round(performance.now() - requestStart);
           renderContent(contentEl, text || '[aborted]');
-          return { text: text || '[aborted]', aborted: true, usage, durationMs };
+          return { text: text || '[aborted]', empty: !text, aborted: true, usage, durationMs };
         }
         throw err;
       }
@@ -1319,13 +1361,12 @@ Please critically review the above response and produce an improved version. Fix
         appendMessage('user', userText);
         conversation.push({ role: 'user', content: userText });
       } else {
-        appendMessage('system', '[retrying last prompt]');
         if (conversation.length && conversation[conversation.length - 1].role === 'assistant') {
           conversation.pop();
-          // Remove the stale assistant DOM element left from the previous attempt
-          const assistantMsgs = messagesEl.querySelectorAll('.msg.assistant');
-          if (assistantMsgs.length) assistantMsgs[assistantMsgs.length - 1].remove();
         }
+        // Drop the previous attempt's assistant, refinement and error messages from the chat and transcript
+        removeMessagesAfterLastUser();
+        appendMessage('system', '[retrying last prompt]');
       }
 
       lastUserMessage = userText;
@@ -1349,6 +1390,7 @@ Please critically review the above response and produce an improved version. Fix
         });
 
         finalResponse = initial.text;
+        finalizeMessage(currentMessage, initial);
 
         if (initial.aborted) {
           currentMessage.wrapper.classList.add('aborted');
@@ -1356,14 +1398,6 @@ Please critically review the above response and produce an improved version. Fix
           currentMessage.noteDiv.textContent = '[stream aborted]';
           conversation.push({ role: 'assistant', content: finalResponse + '\n\n[aborted]' });
           return;
-        }
-
-        // Update initial message meta with per-request timing and token counts
-        {
-          const usageParts = initial.usage
-            ? ` · ${initial.usage.prompt_tokens ?? '?'}↑ ${initial.usage.completion_tokens ?? '?'}↓`
-            : '';
-          currentMessage.metaEl.textContent = `${formatTimestamp()} · ${initial.durationMs} ms${usageParts}`;
         }
 
         const doRefine = refineEnabledEl.checked;
@@ -1403,23 +1437,24 @@ Please critically review the above response and produce an improved version. Fix
             cursorClass: ' refine-cursor'
           });
 
-          finalResponse = refined.text;
-
-          // Update refine message meta with per-request timing and token counts
-          {
-            const usageParts = refined.usage
-              ? ` · ${refined.usage.prompt_tokens ?? '?'}↑ ${refined.usage.completion_tokens ?? '?'}↓`
-              : '';
-            refineRespMsg.metaEl.textContent = `${formatTimestamp()} · ${refined.durationMs} ms${usageParts}`;
-          }
+          finalizeMessage(refineRespMsg, refined);
 
           if (refined.aborted) {
+            // Keep the last complete response rather than a partial rewrite
             refineRespMsg.wrapper.classList.add('aborted');
             refineRespMsg.noteDiv.hidden = false;
-            refineRespMsg.noteDiv.textContent = '[refinement aborted]';
-            conversation.push({ role: 'assistant', content: finalResponse + '\n\n[aborted]' });
+            refineRespMsg.noteDiv.textContent = '[refinement aborted — kept previous response]';
+            conversation.push({ role: 'assistant', content: finalResponse });
             return;
           }
+
+          if (refined.empty) {
+            refineRespMsg.noteDiv.hidden = false;
+            refineRespMsg.noteDiv.textContent = '[empty refinement — kept previous response]';
+            continue;
+          }
+
+          finalResponse = refined.text;
         }
 
         conversation.push({ role: 'assistant', content: finalResponse });
@@ -1529,17 +1564,20 @@ Please critically review the above response and produce an improved version. Fix
           if (msg.contentDiv) renderContent(msg.contentDiv, item.content || '');
           messagesEl.appendChild(msg.wrapper);
           transcript.push(item);
+          entryElements.set(item, msg.wrapper);
         }
       } else {
         for (const item of conversation) {
           const msg = createMessageElement(item.role, item.content || '');
           if (msg.contentDiv) renderContent(msg.contentDiv, item.content || '');
           messagesEl.appendChild(msg.wrapper);
-          transcript.push({
+          const entry = {
             role: item.role,
             content: item.content,
             timestamp: new Date().toISOString()
-          });
+          };
+          transcript.push(entry);
+          entryElements.set(entry, msg.wrapper);
         }
       }
 
@@ -1612,7 +1650,8 @@ Please critically review the above response and produce an improved version. Fix
       let textToCopy;
       if (btn.classList.contains('msg-copy-btn')) {
         // Copy full message text content
-        textToCopy = btn.closest('.msg')?.querySelector('.msg-content')?.textContent ?? '';
+        const msgEl = btn.closest('.msg');
+        textToCopy = msgEl?.rawText ?? msgEl?.querySelector('.msg-content')?.textContent ?? '';
       } else {
         // Copy code block content
         textToCopy = btn.closest('.code-block')?.querySelector('code')?.textContent ?? '';
