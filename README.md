@@ -64,6 +64,8 @@ The "Extra JSON Params" field accepts a JSON object that is merged into the requ
 {"top_p": 0.9, "repeat_penalty": 1.1}
 ```
 
+Setting a field to `null` removes it from the request. For example, `{"stream_options": null}` stops the client asking for token usage, for servers that reject that field.
+
 ---
 
 ## Export Format
